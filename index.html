@@ -157,7 +157,8 @@
     <!-- targetIndex: 0 = 1ère image dans targets.mind                -->
     <!-- ============================================================ -->
     <a-entity mindar-image-target="targetIndex: 0">
-      <a-plane src="#image-cible1" image-aspect-ratio position="0 0 0.01" scale="0 0 0" rotation="0 0 0"
+      <a-plane src="#image-cible1" image-aspect-ratio="fit: contain; baseWidth: 1; targetHeight: 0.5625"
+        width="0.4339" height="0.5625" position="0 0 0.01" scale="0 0 0" rotation="0 0 0"
         material="src: #image-cible1; shader: flat; transparent: true"
         scale-on-target="targetScale: 1 1 1; durIn: 700; durOut: 400"></a-plane>
     </a-entity>
@@ -167,7 +168,8 @@
     <!-- targetIndex: 1 = 2ème image dans targets.mind                -->
     <!-- ============================================================ -->
     <a-entity mindar-image-target="targetIndex: 1">
-      <a-plane src="#image-cible2" image-aspect-ratio position="0 0 0.01" scale="0 0 0" rotation="0 0 0"
+      <a-plane src="#image-cible2" image-aspect-ratio="fit: contain; baseWidth: 1; targetHeight: 1.4989"
+        width="1" height="0.75" position="0 0 0.01" scale="0 0 0" rotation="0 0 0"
         material="src: #image-cible2; shader: flat; transparent: true"
         scale-on-target="targetScale: 1 1 1; durIn: 700; durOut: 400"></a-plane>
     </a-entity>
@@ -177,7 +179,8 @@
     <!-- targetIndex: 2 = 3ème image dans targets.mind                -->
     <!-- ============================================================ -->
     <a-entity mindar-image-target="targetIndex: 2">
-      <a-plane src="#image-cible3" image-aspect-ratio position="0 0 0.01" scale="0 0 0" rotation="0 0 0"
+      <a-plane src="#image-cible3" image-aspect-ratio="fit: contain; baseWidth: 1; targetHeight: 1.5"
+        width="0.8438" height="1.5" position="0 0 0.01" scale="0 0 0" rotation="0 0 0"
         material="src: #image-cible3; shader: flat; transparent: true"
         scale-on-target="targetScale: 1 1 1; durIn: 700; durOut: 400"></a-plane>
     </a-entity>
@@ -377,22 +380,77 @@
 
     // ============================================================
     // Composant image-aspect-ratio
-    // Détecte automatiquement la résolution réelle de l'image et
-    // ajuste la hauteur/largeur du plan pour éviter toute déformation
+    // Adapte l'image à la taille exacte du support (marqueur AR)
+    // en conservant strictement ses proportions (sans déformation)
     // ============================================================
     AFRAME.registerComponent('image-aspect-ratio', {
       schema: {
-        baseWidth: { type: 'number', default: 1 }
+        fit: { type: 'string', default: 'contain' }, // 'contain' (tient dans le support) ou 'cover'
+        baseWidth: { type: 'number', default: 1 },   // Largeur normalisée du marqueur MindAR
+        targetHeight: { type: 'number', default: 0 } // Hauteur du support si connue (0 = détection auto)
       },
       init: function () {
         const el = this.el;
-        const baseW = this.data.baseWidth;
+        const self = this;
+
+        // Ratios de hauteur des supports de référence connus (hauteur / largeur) :
+        // Cible 0 (img1.jpeg, 1600x900)  -> 900/1600 = 0.5625
+        // Cible 1 (img2.jpeg, 870x1304)  -> 1304/870 ≈ 1.4989
+        // Cible 2 (img3.jpeg, 928x1392)  -> 1392/928 = 1.5
+        const defaultTargetHeights = [0.5625, 1.4989, 1.5];
+
+        const getTargetHeight = () => {
+          if (self.data.targetHeight > 0) return self.data.targetHeight;
+
+          const parent = el.closest('[mindar-image-target]') || el.parentEl;
+          const targetIndex = parent ? parseInt(parent.getAttribute('mindar-image-target')?.targetIndex || 0, 10) : 0;
+
+          // Essaye de récupérer les dimensions calculées par MindAR
+          try {
+            const mindarSystem = el.sceneEl?.systems?.['mindar-image-system'];
+            const targetData = mindarSystem?.controller?.targetImages?.[targetIndex];
+            if (targetData && targetData.width && targetData.height) {
+              return (targetData.height / targetData.width) * self.data.baseWidth;
+            }
+          } catch (e) {}
+
+          const knownH = defaultTargetHeights[targetIndex];
+          return (knownH !== undefined ? knownH : 1) * self.data.baseWidth;
+        };
 
         const applyRatio = (img) => {
           if (!img || !img.naturalWidth || !img.naturalHeight) return;
-          const ratio = img.naturalHeight / img.naturalWidth;
-          el.setAttribute('width', baseW);
-          el.setAttribute('height', (baseW * ratio).toFixed(4));
+
+          const targetW = self.data.baseWidth;
+          const targetH = getTargetHeight();
+
+          const imgRatio = img.naturalHeight / img.naturalWidth;
+          const targetRatio = targetH / targetW;
+
+          let finalW, finalH;
+
+          if (self.data.fit === 'cover') {
+            // Remplit tout le support sans déformation
+            if (imgRatio > targetRatio) {
+              finalW = targetW;
+              finalH = targetW * imgRatio;
+            } else {
+              finalH = targetH;
+              finalW = targetH / imgRatio;
+            }
+          } else {
+            // Mode 'contain' : s'adapte à la taille du support sans déborder ni déformer
+            if (imgRatio > targetRatio) {
+              finalH = targetH;
+              finalW = targetH / imgRatio;
+            } else {
+              finalW = targetW;
+              finalH = targetW * imgRatio;
+            }
+          }
+
+          el.setAttribute('width', finalW.toFixed(4));
+          el.setAttribute('height', finalH.toFixed(4));
         };
 
         const checkImage = () => {
@@ -424,6 +482,8 @@
         } else {
           el.sceneEl.addEventListener('loaded', checkImage);
         }
+
+        el.sceneEl.addEventListener('arReady', checkImage, { once: true });
       }
     });
   </script>
