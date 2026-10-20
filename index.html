@@ -153,27 +153,33 @@
       </a-entity> -->
 
     <!-- ============================================================ -->
-    <!-- [ CIBLE 1 ] →  IMAGE                                         -->
-    <!-- targetIndex: 1 = 2ème image dans targets.mind               -->
+    <!-- [ CIBLE 0 ] →  IMAGE 1 (singe1.jpeg)                          -->
+    <!-- targetIndex: 0 = 1ère image dans targets.mind                -->
     <!-- ============================================================ -->
     <a-entity mindar-image-target="targetIndex: 0">
-
-      <a-gltf-model src="#image-cible1" position="0 0 0" scale="0 0 0" rotation="90 0 0" touch-rotate
-        scale-on-target="targetScale: 5 5 5; durIn: 700; durOut: 400"></a-gltf-model>
+      <a-plane src="#image-cible1" image-aspect-ratio position="0 0 0.01" scale="0 0 0" rotation="0 0 0"
+        material="src: #image-cible1; shader: flat; transparent: true"
+        scale-on-target="targetScale: 1 1 1; durIn: 700; durOut: 400"></a-plane>
     </a-entity>
 
+    <!-- ============================================================ -->
+    <!-- [ CIBLE 1 ] →  IMAGE 2 (singe2.jpeg)                          -->
+    <!-- targetIndex: 1 = 2ème image dans targets.mind                -->
+    <!-- ============================================================ -->
     <a-entity mindar-image-target="targetIndex: 1">
-
-
-      <a-gltf-model src="#image-cible2" position="0 0 0" scale="0 0 0" rotation="90 0 0" touch-rotate
-        scale-on-target="targetScale: 5 5 5; durIn: 700; durOut: 400"></a-gltf-model>
+      <a-plane src="#image-cible2" image-aspect-ratio position="0 0 0.01" scale="0 0 0" rotation="0 0 0"
+        material="src: #image-cible2; shader: flat; transparent: true"
+        scale-on-target="targetScale: 1 1 1; durIn: 700; durOut: 400"></a-plane>
     </a-entity>
 
+    <!-- ============================================================ -->
+    <!-- [ CIBLE 2 ] →  IMAGE 3 (singe3.jpg)                           -->
+    <!-- targetIndex: 2 = 3ème image dans targets.mind                -->
+    <!-- ============================================================ -->
     <a-entity mindar-image-target="targetIndex: 2">
-
-
-      <a-gltf-model src="#image-cible3" position="0 0 0" scale="0 0 0" rotation="90 0 0" touch-rotate
-        scale-on-target="targetScale: 5 5 5; durIn: 700; durOut: 400"></a-gltf-model>
+      <a-plane src="#image-cible3" image-aspect-ratio position="0 0 0.01" scale="0 0 0" rotation="0 0 0"
+        material="src: #image-cible3; shader: flat; transparent: true"
+        scale-on-target="targetScale: 1 1 1; durIn: 700; durOut: 400"></a-plane>
     </a-entity>
 
     <!-- ============================================================ -->
@@ -365,6 +371,58 @@
           checkVideo();
         } else {
           el.sceneEl.addEventListener('loaded', checkVideo);
+        }
+      }
+    });
+
+    // ============================================================
+    // Composant image-aspect-ratio
+    // Détecte automatiquement la résolution réelle de l'image et
+    // ajuste la hauteur/largeur du plan pour éviter toute déformation
+    // ============================================================
+    AFRAME.registerComponent('image-aspect-ratio', {
+      schema: {
+        baseWidth: { type: 'number', default: 1 }
+      },
+      init: function () {
+        const el = this.el;
+        const baseW = this.data.baseWidth;
+
+        const applyRatio = (img) => {
+          if (!img || !img.naturalWidth || !img.naturalHeight) return;
+          const ratio = img.naturalHeight / img.naturalWidth;
+          el.setAttribute('width', baseW);
+          el.setAttribute('height', (baseW * ratio).toFixed(4));
+        };
+
+        const checkImage = () => {
+          let src = el.getAttribute('src');
+          if (!src) {
+            const mat = el.getAttribute('material');
+            if (typeof mat === 'string') {
+              const m = mat.match(/src:\s*(#[a-zA-Z0-9_-]+)/);
+              if (m) src = m[1];
+            } else if (mat && mat.src) {
+              src = mat.src;
+            }
+          }
+          let img = null;
+          if (typeof src === 'string' && src.startsWith('#')) {
+            img = document.querySelector(src);
+          }
+          if (img) {
+            if (img.complete && img.naturalWidth) {
+              applyRatio(img);
+            } else {
+              img.addEventListener('load', () => applyRatio(img), { once: true });
+            }
+          }
+        };
+
+        if (el.sceneEl.hasLoaded) {
+          checkImage();
+        } else {
+          el.sceneEl.addEventListener('loaded', checkImage);
         }
       }
     });
