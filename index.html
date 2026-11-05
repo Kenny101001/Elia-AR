@@ -89,13 +89,22 @@
     .sound-label {
       line-height: 1;
     }
+
+    /* ============================================================ */
+    /* Canvas de détection caché (grayscale interne)               */
+    /* Le flux caméra visible reste en couleur                      */
+    /* ============================================================ */
+    #grayscale-processing-canvas {
+      display: none !important;
+    }
   </style>
 </head>
 
 <body>
   <!-- Scène AR -->
-  <a-scene mindar-image="imageTargetSrc: ./targets.mind;filterMinCF: 0.0001; filterBeta: 0.01;" color-space="sRGB"
-    renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false"
+  <a-scene
+    mindar-image="imageTargetSrc: ./targets.mind; filterMinCF: 0.001; filterBeta: 0.01; warmupTolerance: 2; missTolerance: 15;"
+    color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false"
     device-orientation-permission-ui="enabled: false">
 
     <!-- ============================================================ -->
@@ -157,8 +166,8 @@
     <!-- targetIndex: 0 = 1ère image dans targets.mind                -->
     <!-- ============================================================ -->
     <a-entity mindar-image-target="targetIndex: 0">
-      <a-plane src="#image-cible1" image-aspect-ratio="fit: contain; baseWidth: 1; targetHeight: 0.5625"
-        width="0.4339" height="0.5625" position="0 0 0.01" scale="0 0 0" rotation="0 0 0"
+      <a-plane src="#image-cible1" image-aspect-ratio="fit: contain; baseWidth: 1; targetHeight: 0.5625" width="0.4339"
+        height="0.5625" position="0 0 0.01" scale="0 0 0" rotation="0 0 0"
         material="src: #image-cible1; shader: flat; transparent: true"
         scale-on-target="targetScale: 1 1 1; durIn: 700; durOut: 400"></a-plane>
     </a-entity>
@@ -168,8 +177,8 @@
     <!-- targetIndex: 1 = 2ème image dans targets.mind                -->
     <!-- ============================================================ -->
     <a-entity mindar-image-target="targetIndex: 1">
-      <a-plane src="#image-cible2" image-aspect-ratio="fit: contain; baseWidth: 1; targetHeight: 1.4989"
-        width="1" height="0.75" position="0 0 0.01" scale="0 0 0" rotation="0 0 0"
+      <a-plane src="#image-cible2" image-aspect-ratio="fit: contain; baseWidth: 1; targetHeight: 1.4989" width="1"
+        height="0.75" position="0 0 0.01" scale="0 0 0" rotation="0 0 0"
         material="src: #image-cible2; shader: flat; transparent: true"
         scale-on-target="targetScale: 1 1 1; durIn: 700; durOut: 400"></a-plane>
     </a-entity>
@@ -179,8 +188,8 @@
     <!-- targetIndex: 2 = 3ème image dans targets.mind                -->
     <!-- ============================================================ -->
     <a-entity mindar-image-target="targetIndex: 2">
-      <a-plane src="#image-cible3" image-aspect-ratio="fit: contain; baseWidth: 1; targetHeight: 1.5"
-        width="0.8438" height="1.5" position="0 0 0.01" scale="0 0 0" rotation="0 0 0"
+      <a-plane src="#image-cible3" image-aspect-ratio="fit: contain; baseWidth: 1; targetHeight: 1.5" width="0.8438"
+        height="1.5" position="0 0 0.01" scale="0 0 0" rotation="0 0 0"
         material="src: #image-cible3; shader: flat; transparent: true"
         scale-on-target="targetScale: 1 1 1; durIn: 700; durOut: 400"></a-plane>
     </a-entity>
@@ -205,6 +214,48 @@
   </a-scene>
 
   <script>
+    // ============================================================
+    // DUAL-CANVAS : Affichage couleur + Détection grayscale
+    // ─────────────────────────────────────────────────────────────
+    // Principe :
+    //   1. MindAR lit le flux caméra depuis l'élément <video>
+    //   2. On intercepte le drawImage() de son canvas interne
+    //   3. Avant chaque frame, on applique filter:grayscale en JS
+    //      sur un canvas caché → MindAR analyse une image N&B
+    //   4. Le <video> visible reste intact → affichage en couleur
+    // ─────────────────────────────────────────────────────────────
+    (function () {
+      // On patche le getContext de HTMLCanvasElement AVANT que
+      // MindAR crée ses canvas, pour intercepter drawImage()
+      const _origGetContext = HTMLCanvasElement.prototype.getContext;
+
+      HTMLCanvasElement.prototype.getContext = function (type, options) {
+        const ctx = _origGetContext.call(this, type, options);
+
+        // On ne patche que les canvas 2D créés avant l'élément WebGL
+        // (MindAR utilise un canvas 2D pour capturer les frames vidéo)
+        if (type === '2d' && ctx && !this._grayPatched) {
+          this._grayPatched = true;
+          const _origDrawImage = ctx.drawImage;
+
+          ctx.drawImage = function (source, ...args) {
+            // Si la source est un élément <video>, on applique
+            // grayscale + boost contraste avant le dessin
+            if (source instanceof HTMLVideoElement) {
+              const prevFilter = ctx.filter;
+              ctx.filter = 'grayscale(1) contrast(1.15)';
+              _origDrawImage.apply(ctx, [source, ...args]);
+              ctx.filter = prevFilter || 'none';
+            } else {
+              // Pour tout autre source (image, canvas…) : dessin normal
+              _origDrawImage.apply(ctx, [source, ...args]);
+            }
+          };
+        }
+        return ctx;
+      };
+    })();
+
     // ============================================================
     // Composant touch-rotate
     // - Auto-rotation continue sur l'axe Y
@@ -412,7 +463,7 @@
             if (targetData && targetData.width && targetData.height) {
               return (targetData.height / targetData.width) * self.data.baseWidth;
             }
-          } catch (e) {}
+          } catch (e) { }
 
           const knownH = defaultTargetHeights[targetIndex];
           return (knownH !== undefined ? knownH : 1) * self.data.baseWidth;
